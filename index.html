@@ -1,0 +1,689 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>The Social Sync — Cassandra Mowafoluwa</title>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,600;0,700;1,400;1,700&family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --green:    #0D4A35;
+    --green2:   #1A6B4A;
+    --green3:   #082E20;
+    --gold:     #C9963A;
+    --gold2:    #E8B96A;
+    --gold3:    #F5DBA0;
+    --cream:    #F4EFE8;
+    --cream2:   #EDE6DB;
+    --dark:     #0A0A0A;
+    --card:     #112B1E;
+    --card2:    #0E2419;
+    --muted:    #8AADA0;
+    --white:    #F8F5F0;
+    --border:   rgba(201,150,58,0.15);
+  }
+
+  * { margin:0; padding:0; box-sizing:border-box; }
+
+  body {
+    background: var(--green3);
+    color: var(--white);
+    font-family: 'DM Sans', sans-serif;
+    overflow-x: hidden;
+    cursor: none;
+  }
+
+  .cursor { width:10px; height:10px; background:var(--gold); border-radius:50%; position:fixed; top:0; left:0; pointer-events:none; z-index:9999; mix-blend-mode:screen; }
+  .cursor-ring { width:32px; height:32px; border:1px solid rgba(201,150,58,0.5); border-radius:50%; position:fixed; top:0; left:0; pointer-events:none; z-index:9998; transition:transform 0.18s ease; }
+
+  /* Subtle texture */
+  body::before {
+    content:''; position:fixed; inset:0;
+    background: radial-gradient(ellipse at 0% 0%, rgba(201,150,58,0.06) 0%, transparent 50%),
+                radial-gradient(ellipse at 100% 100%, rgba(13,74,53,0.4) 0%, transparent 50%);
+    pointer-events:none; z-index:0;
+  }
+
+  /* NAV */
+  nav {
+    position:fixed; top:0; left:0; right:0; z-index:100;
+    padding:18px 72px;
+    display:flex; align-items:center; justify-content:space-between;
+    background:rgba(8,46,32,0.85);
+    backdrop-filter:blur(20px);
+    border-bottom:1px solid var(--border);
+  }
+  .nav-logo { font-family:'Cormorant Garamond',serif; font-size:20px; font-weight:700; color:var(--white); letter-spacing:0.05em; }
+  .nav-logo em { color:var(--gold); font-style:italic; }
+  .nav-links { display:flex; gap:32px; }
+  .nav-links a { color:var(--muted); text-decoration:none; font-size:13px; font-weight:500; letter-spacing:0.04em; transition:color 0.2s; }
+  .nav-links a:hover { color:var(--gold); }
+  .nav-handle { font-family:'DM Mono',monospace; font-size:12px; color:var(--gold2); letter-spacing:0.06em; }
+
+  /* HERO */
+  .hero {
+    min-height:100vh; display:grid; grid-template-columns:1fr 1fr;
+    position:relative; z-index:1; overflow:hidden;
+  }
+  .hero-bg {
+    position:absolute; inset:0;
+    background: radial-gradient(ellipse at 80% 40%, rgba(201,150,58,0.08) 0%, transparent 60%),
+                radial-gradient(ellipse at 10% 90%, rgba(13,74,53,0.5) 0%, transparent 50%);
+  }
+  /* Decorative gold lines from brand card */
+  .hero::after {
+    content:''; position:absolute; top:40px; right:40px;
+    width:80px; height:80px;
+    border-top:1px solid rgba(201,150,58,0.3);
+    border-right:1px solid rgba(201,150,58,0.3);
+    pointer-events:none;
+  }
+  .hero::before {
+    content:''; position:absolute; bottom:40px; left:40px;
+    width:80px; height:80px;
+    border-bottom:1px solid rgba(201,150,58,0.3);
+    border-left:1px solid rgba(201,150,58,0.3);
+    pointer-events:none; z-index:2;
+  }
+
+  .hero-left {
+    padding:120px 60px 80px 80px;
+    display:flex; flex-direction:column; justify-content:center;
+    position:relative; z-index:2;
+  }
+
+  .available-tag {
+    display:inline-flex; align-items:center; gap:8px;
+    font-family:'DM Mono',monospace; font-size:10px; letter-spacing:0.18em; text-transform:uppercase;
+    color:var(--gold2); background:rgba(201,150,58,0.1); border:1px solid rgba(201,150,58,0.25);
+    padding:6px 14px; border-radius:2px; margin-bottom:36px; width:fit-content;
+    animation:fadeUp 0.6s ease both;
+  }
+  .available-tag::before { content:'●'; font-size:7px; animation:pulse 2s infinite; color:var(--gold); }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
+
+  h1 {
+    font-family:'Cormorant Garamond',serif;
+    font-size:clamp(54px,5.8vw,88px); font-weight:700; line-height:1.0;
+    margin-bottom:10px; animation:fadeUp 0.6s 0.1s ease both;
+  }
+  h1 em { color:var(--gold); font-style:italic; }
+
+  .name-sub {
+    font-family:'DM Mono',monospace; font-size:11px; letter-spacing:0.28em;
+    color:var(--muted); text-transform:uppercase; margin-bottom:32px;
+    animation:fadeUp 0.6s 0.2s ease both;
+  }
+
+  .hero-bio {
+    font-size:16px; line-height:1.8; color:var(--muted);
+    max-width:460px; margin-bottom:44px;
+    border-left:2px solid var(--gold); padding-left:20px;
+    animation:fadeUp 0.6s 0.3s ease both;
+  }
+  .hero-bio strong { color:var(--white); font-weight:500; }
+
+  .cta-row { display:flex; gap:16px; flex-wrap:wrap; animation:fadeUp 0.6s 0.4s ease both; }
+
+  .btn-primary {
+    background:var(--gold); color:var(--green3); border:none;
+    padding:13px 26px; border-radius:2px;
+    font-family:'DM Sans',sans-serif; font-size:13px; font-weight:700;
+    cursor:pointer; text-decoration:none;
+    display:inline-flex; align-items:center; gap:8px;
+    letter-spacing:0.04em; transition:transform 0.2s, box-shadow 0.2s;
+  }
+  .btn-primary:hover { transform:translateY(-2px); box-shadow:0 12px 40px rgba(201,150,58,0.35); }
+
+  .btn-ghost {
+    background:transparent; color:var(--white);
+    border:1px solid rgba(201,150,58,0.3);
+    padding:13px 26px; border-radius:2px;
+    font-family:'DM Sans',sans-serif; font-size:13px; font-weight:500;
+    cursor:pointer; text-decoration:none;
+    display:inline-flex; align-items:center; gap:8px;
+    transition:border-color 0.2s, color 0.2s;
+  }
+  .btn-ghost:hover { border-color:var(--gold); color:var(--gold); }
+
+  .hero-right {
+    display:flex; align-items:center; justify-content:center;
+    position:relative; z-index:2; padding:120px 80px 80px 20px;
+  }
+
+  .stats-grid { display:grid; grid-template-columns:1fr 1fr; gap:16px; animation:fadeUp 0.6s 0.5s ease both; }
+
+  .stat-card {
+    background:rgba(13,74,53,0.5); border:1px solid var(--border);
+    border-radius:4px; padding:28px 24px; position:relative; overflow:hidden;
+    transition:transform 0.3s, border-color 0.3s;
+    backdrop-filter:blur(10px);
+  }
+  .stat-card:hover { transform:translateY(-4px); border-color:rgba(201,150,58,0.4); }
+  .stat-card::after { content:''; position:absolute; top:0; left:0; right:0; height:2px; background:linear-gradient(90deg,var(--gold),transparent); }
+
+  .stat-num { font-family:'Cormorant Garamond',serif; font-size:48px; font-weight:700; color:var(--white); line-height:1; margin-bottom:6px; }
+  .stat-num em { color:var(--gold); font-style:normal; }
+  .stat-label { font-size:12px; color:var(--muted); line-height:1.5; }
+  .stat-sub { font-size:11px; color:rgba(138,173,160,0.6); margin-top:4px; font-family:'DM Mono',monospace; }
+
+  @keyframes fadeUp { from{opacity:0;transform:translateY(24px)} to{opacity:1;transform:none} }
+
+  /* SECTIONS */
+  section { padding:100px 80px; position:relative; z-index:1; }
+
+  .section-eyebrow {
+    font-family:'DM Mono',monospace; font-size:10px; letter-spacing:0.22em;
+    color:var(--gold); text-transform:uppercase; margin-bottom:14px;
+    display:flex; align-items:center; gap:14px;
+  }
+  .section-eyebrow::after { content:''; width:50px; height:1px; background:var(--gold); opacity:0.35; }
+
+  .section-title {
+    font-family:'Cormorant Garamond',serif;
+    font-size:clamp(36px,4vw,58px); font-weight:700; line-height:1.1; margin-bottom:60px;
+  }
+
+  /* BRANDS */
+  #brands { background:var(--card2); }
+  .brands-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:20px; }
+
+  .brand-card {
+    background:rgba(13,74,53,0.35); border:1px solid var(--border);
+    border-radius:4px; padding:36px 28px;
+    transition:transform 0.3s, border-color 0.3s, box-shadow 0.3s;
+    position:relative; overflow:hidden;
+  }
+  .brand-card:hover { transform:translateY(-6px); border-color:rgba(201,150,58,0.4); box-shadow:0 20px 60px rgba(0,0,0,0.3); }
+  .brand-card::before { content:''; position:absolute; top:0; left:0; width:3px; height:0; background:var(--gold); transition:height 0.4s ease; }
+  .brand-card:hover::before { height:100%; }
+
+  .brand-icon { width:48px; height:48px; border-radius:4px; display:flex; align-items:center; justify-content:center; font-size:22px; margin-bottom:18px; background:rgba(201,150,58,0.1); }
+  .brand-name { font-family:'Cormorant Garamond',serif; font-size:20px; font-weight:700; margin-bottom:3px; color:var(--white); }
+  .brand-type { font-size:11px; color:var(--muted); margin-bottom:16px; font-family:'DM Mono',monospace; letter-spacing:0.05em; }
+
+  .brand-tag {
+    display:inline-flex; align-items:center; gap:5px;
+    background:rgba(201,150,58,0.1); border:1px solid rgba(201,150,58,0.25);
+    color:var(--gold2); font-size:11px; font-weight:600;
+    padding:3px 10px; border-radius:2px; margin-bottom:5px; margin-right:4px;
+  }
+
+  .brand-desc { font-size:13px; color:var(--muted); line-height:1.7; margin-top:14px; }
+
+  .brand-links { margin-top:14px; display:flex; flex-wrap:wrap; gap:8px; }
+  .brand-link {
+    font-family:'DM Mono',monospace; font-size:10px; letter-spacing:0.04em;
+    color:var(--gold); text-decoration:none; padding:3px 8px;
+    border:1px solid rgba(201,150,58,0.2); border-radius:2px;
+    transition:background 0.2s, border-color 0.2s;
+  }
+  .brand-link:hover { background:rgba(201,150,58,0.1); border-color:rgba(201,150,58,0.5); }
+
+  /* ANALYTICS */
+  #analytics { background:var(--green3); }
+  .analytics-grid { display:grid; grid-template-columns:1fr 1fr; gap:28px; }
+
+  .analytics-card {
+    background:rgba(13,74,53,0.4); border:1px solid var(--border);
+    border-radius:4px; padding:36px; backdrop-filter:blur(10px);
+  }
+  .analytics-title { font-size:11px; font-family:'DM Mono',monospace; color:var(--muted); text-transform:uppercase; letter-spacing:0.12em; margin-bottom:8px; }
+  .analytics-main { font-family:'Cormorant Garamond',serif; font-size:60px; font-weight:700; color:var(--white); line-height:1; margin-bottom:8px; }
+  .analytics-main em { color:var(--gold); font-style:normal; }
+  .analytics-sub { font-size:13px; color:var(--muted); margin-bottom:28px; }
+
+  .progress-row { margin-bottom:14px; }
+  .progress-label { display:flex; justify-content:space-between; font-size:12px; margin-bottom:6px; }
+  .progress-label span:first-child { color:var(--muted); }
+  .progress-label span:last-child { color:var(--white); font-weight:600; }
+  .progress-track { height:4px; background:rgba(255,255,255,0.05); border-radius:100px; overflow:hidden; }
+  .progress-fill { height:100%; border-radius:100px; background:linear-gradient(90deg,var(--gold),var(--gold2)); transition:width 1.5s ease; }
+  .progress-fill.green { background:linear-gradient(90deg,var(--green2),#4dbb88); }
+
+  /* SKILLS */
+  #skills { background:var(--card2); }
+  .skills-layout { display:grid; grid-template-columns:1fr 1fr; gap:60px; }
+
+  .skill-group-title { font-family:'DM Mono',monospace; font-size:10px; color:var(--gold); letter-spacing:0.18em; text-transform:uppercase; margin-bottom:18px; }
+
+  .skill-pills { display:flex; flex-wrap:wrap; gap:8px; margin-bottom:32px; }
+  .skill-pill {
+    padding:7px 15px; border-radius:2px; font-size:12px; font-weight:500;
+    border:1px solid var(--border); color:var(--muted);
+    transition:border-color 0.2s, color 0.2s, background 0.2s; cursor:default;
+  }
+  .skill-pill:hover, .skill-pill.active { border-color:rgba(201,150,58,0.5); color:var(--white); background:rgba(201,150,58,0.08); }
+
+  .platform-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:10px; }
+  .platform-card {
+    background:rgba(13,74,53,0.4); border:1px solid var(--border);
+    border-radius:4px; padding:16px; text-align:center;
+    transition:border-color 0.2s, transform 0.2s;
+  }
+  .platform-card:hover { border-color:rgba(201,150,58,0.4); transform:translateY(-2px); }
+  .platform-card .icon { font-size:22px; margin-bottom:7px; }
+  .platform-card .name { font-size:11px; color:var(--muted); font-family:'DM Mono',monospace; }
+
+  /* CERT */
+  .cert-card {
+    background:rgba(201,150,58,0.05); border:1px solid rgba(201,150,58,0.2);
+    border-radius:4px; padding:28px 32px; display:flex; align-items:center; gap:28px; margin-top:48px;
+  }
+  .cert-badge { font-size:36px; flex-shrink:0; }
+  .cert-title { font-family:'Cormorant Garamond',serif; font-size:22px; font-weight:700; color:var(--white); margin-bottom:4px; }
+  .cert-detail { font-size:12px; color:var(--muted); font-family:'DM Mono',monospace; line-height:1.7; }
+  .cert-detail strong { color:var(--gold2); }
+
+  /* ABOUT */
+  #about { background:var(--green3); }
+  .about-layout { display:grid; grid-template-columns:3fr 2fr; gap:80px; align-items:start; }
+  .about-text p { font-size:16px; line-height:1.85; color:var(--muted); margin-bottom:20px; }
+  .about-text strong { color:var(--white); font-weight:500; }
+
+  .detail-row {
+    display:flex; align-items:center; gap:14px; padding:14px 18px;
+    border-radius:4px; background:rgba(13,74,53,0.4); border:1px solid var(--border);
+    font-size:13px; margin-bottom:10px;
+  }
+  .di { width:34px; height:34px; border-radius:3px; background:rgba(201,150,58,0.12); display:flex; align-items:center; justify-content:center; font-size:15px; flex-shrink:0; }
+  .dt { color:var(--muted); font-size:10px; text-transform:uppercase; letter-spacing:0.08em; font-family:'DM Mono',monospace; margin-bottom:2px; }
+  .dv { color:var(--white); font-weight:500; font-size:13px; }
+
+  /* REELS */
+  .reels-section { margin-top:48px; }
+  .reels-title { font-family:'DM Mono',monospace; font-size:10px; color:var(--gold); letter-spacing:0.18em; text-transform:uppercase; margin-bottom:16px; }
+  .reels-grid { display:flex; flex-wrap:wrap; gap:10px; }
+  .reel-link {
+    display:inline-flex; align-items:center; gap:8px;
+    background:rgba(13,74,53,0.5); border:1px solid var(--border);
+    color:var(--gold2); text-decoration:none; font-size:12px;
+    padding:8px 14px; border-radius:2px; font-family:'DM Mono',monospace;
+    transition:border-color 0.2s, background 0.2s;
+  }
+  .reel-link:hover { border-color:rgba(201,150,58,0.5); background:rgba(201,150,58,0.08); }
+
+  /* FOOTER */
+  footer {
+    padding:60px 80px; background:#050e09;
+    border-top:1px solid var(--border);
+    text-align:center; position:relative; z-index:1;
+  }
+  .footer-name { font-family:'Cormorant Garamond',serif; font-size:32px; font-weight:700; margin-bottom:14px; }
+  .footer-name em { color:var(--gold); font-style:italic; }
+  .footer-tagline { font-size:13px; color:var(--muted); margin-bottom:24px; }
+  .footer-contacts { display:flex; justify-content:center; gap:32px; flex-wrap:wrap; margin-bottom:28px; }
+  .footer-contacts a { color:var(--muted); text-decoration:none; font-size:13px; transition:color 0.2s; }
+  .footer-contacts a:hover { color:var(--gold); }
+  .footer-copy { font-size:11px; color:rgba(138,173,160,0.3); font-family:'DM Mono',monospace; }
+
+  /* scroll reveal */
+  .reveal { opacity:0; transform:translateY(28px); transition:opacity 0.7s ease, transform 0.7s ease; }
+  .reveal.visible { opacity:1; transform:none; }
+
+  @media(max-width:900px){
+    nav{padding:16px 20px;} .nav-links,.nav-handle{display:none;}
+    .hero{grid-template-columns:1fr;padding-top:80px;}
+    .hero-left{padding:60px 24px 40px;}
+    .hero-right{padding:0 24px 60px;}
+    .stats-grid{grid-template-columns:1fr 1fr;}
+    section{padding:70px 24px;}
+    .brands-grid,.analytics-grid,.skills-layout,.about-layout{grid-template-columns:1fr;}
+    footer{padding:40px 24px;}
+  }
+</style>
+</head>
+<body>
+
+<div class="cursor" id="cursor"></div>
+<div class="cursor-ring" id="cursorRing"></div>
+
+<nav>
+  <div class="nav-logo">The <em>Social Sync</em></div>
+  <div class="nav-links">
+    <a href="#brands">Work</a>
+    <a href="#analytics">Results</a>
+    <a href="#skills">Skills</a>
+    <a href="#about">About</a>
+  </div>
+  <div class="nav-handle">@thesocialsync_ng</div>
+</nav>
+
+<!-- HERO -->
+<div class="hero">
+  <div class="hero-bg"></div>
+  <div class="hero-left">
+    <div class="available-tag">Available for Remote Roles Worldwide</div>
+    <h1>I turn<br><em>scrollers</em> into<br>loyal followers.</h1>
+    <div class="name-sub">Adesanya Cassandra Mowafoluwa</div>
+    <p class="hero-bio">
+      Social Media Manager & Content Creator with <strong>2+ years</strong> growing brands across fashion, architecture, hospitality, and the arts. I don't just post — I <strong>build audiences, drive results, and tell stories</strong> that make people stop and pay attention.
+    </p>
+    <div class="cta-row">
+      <a href="mailto:thesocialsync69@gmail.com" class="btn-primary">✉ Hire Me</a>
+      <a href="#brands" class="btn-ghost">See My Work ↓</a>
+    </div>
+  </div>
+  <div class="hero-right">
+    <div class="stats-grid">
+      <div class="stat-card">
+        <div class="stat-num">481<em>+</em></div>
+        <div class="stat-label">New Followers Grown</div>
+        <div class="stat-sub">Muye Clothing</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-num">20<em>K+</em></div>
+        <div class="stat-label">Total Video Views</div>
+        <div class="stat-sub">5 Reels × 1K–3K+</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-num">5<em>x</em></div>
+        <div class="stat-label">Reach Increase</div>
+        <div class="stat-sub">Salschantier</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-num">6<em>+</em></div>
+        <div class="stat-label">Brands Managed</div>
+        <div class="stat-sub">4 Industries</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- BRANDS -->
+<section id="brands">
+  <div class="section-eyebrow">Portfolio</div>
+  <h2 class="section-title">Brands I've Grown</h2>
+  <div class="brands-grid">
+
+    <div class="brand-card reveal">
+      <div class="brand-icon">👗</div>
+      <div class="brand-name">Muye Clothing Collections</div>
+      <div class="brand-type">Fashion · Content + Strategy</div>
+      <span class="brand-tag">↑ 60% Follower Growth</span>
+      <span class="brand-tag">↑ 20K+ Views</span>
+      <div class="brand-desc">Grew Instagram from 800 → 1,281 followers. Produced full photo/video content with styling and staging. Scaled to 5 Reels each earning 1K–3K+ views. Optimised account bio and profile layout.</div>
+      <div class="brand-links">
+        <a class="brand-link" href="https://www.instagram.com/muye_clothing_collections" target="_blank">📷 @muye_clothing_collections</a>
+      </div>
+    </div>
+
+    <div class="brand-card reveal">
+      <div class="brand-icon">🏛</div>
+      <div class="brand-name">Salschantier</div>
+      <div class="brand-type">Architecture & Interior Design · Full Management</div>
+      <span class="brand-tag">↑ 5x Reach (1K→5K)</span>
+      <span class="brand-tag">Analytics Reports</span>
+      <div class="brand-desc">Managed full Instagram presence across two linked pages — Reels, Stories, curated feeds. Delivered bi-weekly analytics reports. Also handled front-desk client communication.</div>
+      <div class="brand-links">
+        <a class="brand-link" href="https://www.instagram.com/sc.retail" target="_blank">📷 @sc.retail</a>
+        <a class="brand-link" href="https://www.instagram.com/sals.chantier" target="_blank">📷 @sals.chantier</a>
+      </div>
+      <div class="reels-section">
+        <div class="reels-title">Featured Reels</div>
+        <div class="reels-grid">
+          <a class="reel-link" href="https://www.instagram.com/reel/DQ9sxFCjDn3/" target="_blank">▶ Reel 1</a>
+          <a class="reel-link" href="https://www.instagram.com/reel/DRXHoFmDG59/" target="_blank">▶ Reel 2</a>
+        </div>
+      </div>
+    </div>
+
+    <div class="brand-card reveal">
+      <div class="brand-icon">🎨</div>
+      <div class="brand-name">Al Faruk Gallery</div>
+      <div class="brand-type">Visual Arts · Exhibition Campaign · 2024</div>
+      <span class="brand-tag">1,806 Accounts Reached</span>
+      <span class="brand-tag">+572% Impressions</span>
+      <div class="brand-desc">Planned and executed full exhibition campaign from pre-event buzz to live coverage. Achieved 3,580 impressions with 68.2% non-follower reach. Page currently maintained in a low-activity phase.</div>
+      <div class="brand-links">
+        <a class="brand-link" href="https://www.instagram.com/alfarukgallery" target="_blank">📷 @alfarukgallery</a>
+      </div>
+    </div>
+
+    <div class="brand-card reveal">
+      <div class="brand-icon">☕</div>
+      <div class="brand-name">Al-Qasr Café</div>
+      <div class="brand-type">Food & Beverage · Community + Local SEO</div>
+      <span class="brand-tag">Google Maps Setup</span>
+      <span class="brand-tag">Customer Engagement</span>
+      <div class="brand-desc">Managed online customer engagement and created the café's Google Maps business profile — building the café's digital footprint from scratch and bridging online-to-offline orders.</div>
+    </div>
+
+    <div class="brand-card reveal">
+      <div class="brand-icon">📚</div>
+      <div class="brand-name">Books by Ishaq</div>
+      <div class="brand-type">Publishing · Community Management</div>
+      <span class="brand-tag">Full DM & Comment Mgmt</span>
+      <div class="brand-desc">Manages all community engagement — comments, DMs, and customer inquiries. Coordinates book availability and supports delivery communication with a warm, consistent brand voice.</div>
+      <div class="brand-links">
+        <a class="brand-link" href="https://www.instagram.com/booksbyishaq" target="_blank">📷 @booksbyishaq</a>
+      </div>
+    </div>
+
+    <div class="brand-card reveal">
+      <div class="brand-icon">💻</div>
+      <div class="brand-name">Codeword Innovation</div>
+      <div class="brand-type">Tech Education · Coding Tutor</div>
+      <span class="brand-tag">10+ Classes Taught</span>
+      <span class="brand-tag">Scratch Programming</span>
+      <div class="brand-desc">Joined as a part-time Scratch programming tutor, delivering 10+ lessons to young learners. Serves as substitute across other educator classes — combining analytical skills with a passion for teaching.</div>
+    </div>
+
+  </div>
+
+  <!-- Muye Reels -->
+  <div style="margin-top:40px;" class="reveal">
+    <div class="section-eyebrow" style="margin-bottom:16px;">Featured Content — Muye Clothing</div>
+    <div class="reels-grid" style="display:flex;flex-wrap:wrap;gap:10px;">
+      <a class="reel-link" href="https://www.instagram.com/reel/DQ2Rxz6Ar1w/" target="_blank">▶ Muye Reel 1</a>
+      <a class="reel-link" href="https://www.instagram.com/reel/DYnvabYiGck/" target="_blank">▶ Muye Reel 2</a>
+    </div>
+  </div>
+</section>
+
+<!-- ANALYTICS -->
+<section id="analytics">
+  <div class="section-eyebrow">Data & Results</div>
+  <h2 class="section-title">The Numbers Don't Lie</h2>
+  <div class="analytics-grid">
+
+    <div class="analytics-card reveal">
+      <div class="analytics-title">Al Faruk Gallery — 30-Day Report</div>
+      <div class="analytics-main">1,<em>806</em></div>
+      <div class="analytics-sub">Accounts Reached · Aug 5 – Sep 3, 2024</div>
+      <div class="progress-row">
+        <div class="progress-label"><span>Impressions Growth</span><span>+572%</span></div>
+        <div class="progress-track"><div class="progress-fill" style="width:92%"></div></div>
+      </div>
+      <div class="progress-row">
+        <div class="progress-label"><span>Non-follower Reach</span><span>68.2%</span></div>
+        <div class="progress-track"><div class="progress-fill green" style="width:68%"></div></div>
+      </div>
+      <div class="progress-row">
+        <div class="progress-label"><span>Follower Reach</span><span>31.8%</span></div>
+        <div class="progress-track"><div class="progress-fill" style="width:32%"></div></div>
+      </div>
+    </div>
+
+    <div class="analytics-card reveal">
+      <div class="analytics-title">Muye Clothing — Growth Summary</div>
+      <div class="analytics-main">60<em>%</em></div>
+      <div class="analytics-sub">Follower Growth · 800 → 1,281</div>
+      <div class="progress-row">
+        <div class="progress-label"><span>Video Views Scaling</span><span>5K → 20K+</span></div>
+        <div class="progress-track"><div class="progress-fill" style="width:85%"></div></div>
+      </div>
+      <div class="progress-row">
+        <div class="progress-label"><span>Reels with 1K+ Views</span><span>5 Reels</span></div>
+        <div class="progress-track"><div class="progress-fill green" style="width:75%"></div></div>
+      </div>
+      <div class="progress-row">
+        <div class="progress-label"><span>Non-follower Reach</span><span>+505%</span></div>
+        <div class="progress-track"><div class="progress-fill" style="width:80%"></div></div>
+      </div>
+    </div>
+
+    <div class="analytics-card reveal">
+      <div class="analytics-title">Salschantier Architecture</div>
+      <div class="analytics-main">5<em>x</em></div>
+      <div class="analytics-sub">Reach Increase · 1,000 → 5,000 Views</div>
+      <div class="progress-row">
+        <div class="progress-label"><span>Page Views Growth</span><span>500%</span></div>
+        <div class="progress-track"><div class="progress-fill" style="width:95%"></div></div>
+      </div>
+      <div class="progress-row">
+        <div class="progress-label"><span>Content Consistency</span><span>High</span></div>
+        <div class="progress-track"><div class="progress-fill green" style="width:90%"></div></div>
+      </div>
+      <div class="progress-row">
+        <div class="progress-label"><span>Bi-weekly Analytics Delivery</span><span>100%</span></div>
+        <div class="progress-track"><div class="progress-fill" style="width:100%"></div></div>
+      </div>
+    </div>
+
+    <div class="analytics-card reveal" style="display:flex;flex-direction:column;justify-content:center;gap:24px;">
+      <div style="text-align:center;">
+        <div style="font-family:'Cormorant Garamond',serif;font-size:52px;font-weight:700;color:var(--white);margin-bottom:6px;">2+</div>
+        <div style="font-size:12px;color:var(--muted);font-family:'DM Mono',monospace;letter-spacing:0.08em;">YEARS ACTIVE EXPERIENCE</div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;text-align:center;">
+        <div><div style="font-family:'Cormorant Garamond',serif;font-size:32px;font-weight:700;color:var(--gold);">6+</div><div style="font-size:11px;color:var(--muted);font-family:'DM Mono',monospace;">BRANDS</div></div>
+        <div><div style="font-family:'Cormorant Garamond',serif;font-size:32px;font-weight:700;color:var(--gold2);">4</div><div style="font-size:11px;color:var(--muted);font-family:'DM Mono',monospace;">INDUSTRIES</div></div>
+        <div><div style="font-family:'Cormorant Garamond',serif;font-size:32px;font-weight:700;color:var(--gold);">10+</div><div style="font-size:11px;color:var(--muted);font-family:'DM Mono',monospace;">CLASSES TAUGHT</div></div>
+        <div><div style="font-family:'Cormorant Garamond',serif;font-size:32px;font-weight:700;color:var(--gold2);">34.5</div><div style="font-size:11px;color:var(--muted);font-family:'DM Mono',monospace;">HRS CERTIFIED</div></div>
+      </div>
+    </div>
+
+  </div>
+</section>
+
+<!-- SKILLS -->
+<section id="skills">
+  <div class="section-eyebrow">Capabilities</div>
+  <h2 class="section-title">What I Bring<br>to the Table</h2>
+  <div class="skills-layout">
+    <div>
+      <div class="skill-group-title">Social Media & Content</div>
+      <div class="skill-pills">
+        <span class="skill-pill active">Content Strategy</span>
+        <span class="skill-pill active">Instagram Growth</span>
+        <span class="skill-pill">Reels Production</span>
+        <span class="skill-pill active">Analytics & Insights</span>
+        <span class="skill-pill">Community Management</span>
+        <span class="skill-pill">Content Calendars</span>
+        <span class="skill-pill active">Trend Research</span>
+        <span class="skill-pill">Bio & Page Optimisation</span>
+        <span class="skill-pill">Campaign Planning</span>
+        <span class="skill-pill">Feed Curation</span>
+        <span class="skill-pill active">Brand Storytelling</span>
+        <span class="skill-pill">DM Management</span>
+      </div>
+      <div class="skill-group-title">Tech & Tools</div>
+      <div class="skill-pills">
+        <span class="skill-pill active">Meta Business Suite</span>
+        <span class="skill-pill">Canva</span>
+        <span class="skill-pill">Google Business Profile</span>
+        <span class="skill-pill">HTML & CSS</span>
+        <span class="skill-pill">WordPress</span>
+        <span class="skill-pill">MS Office Suite</span>
+        <span class="skill-pill">Scratch (Teaching)</span>
+      </div>
+
+      <!-- CERT CARD -->
+      <div class="cert-card reveal">
+        <div class="cert-badge">🎓</div>
+        <div>
+          <div class="cert-title">Social Media Marketing & Management Masterclass 2024</div>
+          <div class="cert-detail">
+            <strong>Udemy · Certified July 9, 2024</strong><br>
+            34.5 hours · Instructors: Robin & Jesper<br>
+            Instagram, TikTok, YouTube, LinkedIn, Pinterest
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div>
+      <div class="skill-group-title">Platforms</div>
+      <div class="platform-grid">
+        <div class="platform-card"><div class="icon">📸</div><div class="name">Instagram</div></div>
+        <div class="platform-card"><div class="icon">🎵</div><div class="name">TikTok</div></div>
+        <div class="platform-card"><div class="icon">🐦</div><div class="name">X / Twitter</div></div>
+        <div class="platform-card"><div class="icon">💼</div><div class="name">LinkedIn</div></div>
+        <div class="platform-card"><div class="icon">📘</div><div class="name">Facebook</div></div>
+        <div class="platform-card"><div class="icon">▶</div><div class="name">YouTube</div></div>
+        <div class="platform-card"><div class="icon">📌</div><div class="name">Pinterest</div></div>
+        <div class="platform-card"><div class="icon">📍</div><div class="name">Google Maps</div></div>
+        <div class="platform-card"><div class="icon">🌐</div><div class="name">WordPress</div></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ABOUT -->
+<section id="about">
+  <div class="section-eyebrow">About Me</div>
+  <h2 class="section-title">The Person Behind<br>the Strategy</h2>
+  <div class="about-layout">
+    <div class="about-text reveal">
+      <p>I'm <strong>Cassandra Mowafoluwa Adesanya</strong> — a Social Media Manager, Content Creator, and digital strategist based in Abuja, Nigeria, open to remote opportunities worldwide.</p>
+      <p>What sets me apart? I've worked across <strong>fashion, architecture, the arts, food & beverage, publishing, and tech education</strong> — which means I know how to read a brand, adapt to its voice, and create content that actually resonates with real audiences.</p>
+      <p>I don't just create posts. I <strong>think in strategies, measure in numbers, and communicate in stories</strong>. From growing a fashion account by 60% in weeks to planning an entire gallery exhibition campaign from scratch, I bring creative energy and analytical discipline in equal measure.</p>
+      <p>Beyond social media, I have a genuine love for tech education. I've taught HTML, CSS, WordPress, and Scratch programming to young learners — proof that I can simplify complex ideas and make them stick.</p>
+    </div>
+    <div class="reveal">
+      <div class="detail-row"><div class="di">📍</div><div><div class="dt">Location</div><div class="dv">Abuja, Nigeria</div></div></div>
+      <div class="detail-row"><div class="di">🌐</div><div><div class="dt">Availability</div><div class="dv">Remote & International</div></div></div>
+      <div class="detail-row"><div class="di">📧</div><div><div class="dt">Email</div><div class="dv">thesocialsync69@gmail.com</div></div></div>
+      <div class="detail-row"><div class="di">📱</div><div><div class="dt">Phone / WhatsApp</div><div class="dv">0907-753-8148</div></div></div>
+      <div class="detail-row"><div class="di">📷</div><div><div class="dt">Instagram</div><div class="dv">@thesocialsync_ng</div></div></div>
+      <div class="detail-row"><div class="di">🎓</div><div><div class="dt">Certified</div><div class="dv">Social Media Mgmt (Udemy) · MS Office (NIIT)</div></div></div>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="footer-name">The <em>Social Sync</em></div>
+  <div class="footer-tagline">Cassandra Mowafoluwa Adesanya · Social Media Manager · Content Creator</div>
+  <div class="footer-contacts">
+    <a href="mailto:thesocialsync69@gmail.com">thesocialsync69@gmail.com</a>
+    <a href="tel:09077538148">0907-753-8148</a>
+    <a href="https://www.instagram.com/thesocialsync_ng" target="_blank">@thesocialsync_ng</a>
+  </div>
+  <div class="footer-copy">© 2025 The Social Sync · Abuja, Nigeria · Open to Remote Opportunities</div>
+</footer>
+
+<script>
+  const cursor = document.getElementById('cursor');
+  const ring = document.getElementById('cursorRing');
+  let mx=0,my=0,rx=0,ry=0;
+  document.addEventListener('mousemove',e=>{
+    mx=e.clientX; my=e.clientY;
+    cursor.style.transform=`translate(${mx-5}px,${my-5}px)`;
+  });
+  function anim(){
+    rx+=(mx-rx)*0.12; ry+=(my-ry)*0.12;
+    ring.style.transform=`translate(${rx-16}px,${ry-16}px)`;
+    requestAnimationFrame(anim);
+  }
+  anim();
+
+  const reveals = document.querySelectorAll('.reveal');
+  const io = new IntersectionObserver(entries=>{
+    entries.forEach((e,i)=>{ if(e.isIntersecting) setTimeout(()=>e.target.classList.add('visible'),i*70); });
+  },{threshold:0.1});
+  reveals.forEach(el=>io.observe(el));
+
+  const fills = document.querySelectorAll('.progress-fill');
+  const fio = new IntersectionObserver(entries=>{
+    entries.forEach(entry=>{
+      if(entry.isIntersecting){
+        const el=entry.target, w=el.style.width;
+        el.style.width='0%'; setTimeout(()=>el.style.width=w,150); fio.unobserve(el);
+      }
+    });
+  },{threshold:0.5});
+  fills.forEach(f=>{const w=f.style.width;f.style.width='0%';fio.observe(f);});
+</script>
+</body>
+</html>
